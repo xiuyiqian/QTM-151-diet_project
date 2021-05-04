@@ -1,0 +1,215 @@
+---
+title: "QTM 151: Final project"
+output: html_document
+---
+
+Xiuyi Qian,
+Tony Hu,
+Kelly Tang,
+Alex Jeoung
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library (Hmisc)
+library (SASxport)
+library(tidyverse)
+library(plotly)
+library(kableExtra)
+```
+
+
+```{r}
+demo <- read.xport ("DEMO_J.xpt")
+diet <- read.xport ("DR1TOT_J.xpt")
+```
+
+
+
+```{r}
+total<-left_join(diet,demo, by="SEQN")
+```
+
+
+```{r}
+total<- total%>%mutate(alcohol =DR1TALCO,educ = DMDEDUC2 ,fam_income = INDFMIN2,age=RIDAGEYR, gender=RIAGENDR,caffine=DR1TCAFF,)
+```
+
+```{r}
+
+summary(total$alcohol)
+summary(total$fam_income)
+summary(total$age)
+summary(total$caffine)
+table(total$educ)
+table(total$gender)
+countstab <- table(as.factor(total$educ),as.factor(total$gender))
+
+(kable(prop.table(countstab, margin=1),digits=2,col.names = c("male","female")))
+```
+
+```{r,message=FALSE,warning=FALSE}
+total <- total %>%
+  drop_na(alcohol)%>%
+  drop_na(DR1TCAFF)%>%
+  drop_na(DMDEDUC2)%>%
+  mutate(educational_level = case_when(
+    ( educ==1|educ==2) ~ "less than high school" ,
+    (educ==3) ~ "high school gradeuates",
+    (educ==4) ~ "some colleges or AA degree",
+    (educ==5) ~ "college graduate or above",
+    (educ>=6) ~ "Don't know",
+  )
+  )
+total$educational_level <- as.factor(total$educational_level)
+levels(total$educational_level) = c("less than high school","high school gradeuates","some colleges or AA degree","college graduate or above","Don't know")
+
+total <- total %>%
+  drop_na(alcohol)%>%
+  mutate(income_class = case_when(
+    (fam_income >= 1 & fam_income < 6) ~ "low_income" ,
+    (fam_income >=6 & fam_income <8) ~ "lowavg_income",
+    (fam_income >=8 & fam_income <=12) ~ "avg_income",
+    (fam_income >12 & fam_income <=14) ~ "Highavg_income",
+    fam_income >14 ~ "Highincome",
+    fam_income ==NA ~ "Unknow",
+    )
+  )
+total$income_class <- as.factor(total$income_class)
+levels(total$income_class) = c("low_income","loavg_income","avg_income","Hiavg_income","Hiincome","Unknow")
+```
+
+
+# Research Question 1
+Alcohol distrubution over age
+
+## distribution of alcohol based on screening age
+```{r,message=FALSE,warning=FALSE}
+all_alcohol <-total %>%
+  group_by(age) %>%
+  plot_ly(x=~alcohol) %>%
+  add_histogram(name="Overall alcohol consumption Distribution", alpha=I(0.8))%>%
+  layout(xaxis=list(title="Age"),yaxis=list(title="Alcohol"))
+  
+
+alcohol_cut <- function(plot, level) {
+  plot %>% filter(educ == level) %>% add_histogram(name = level)
+}
+
+
+all_alcohol %>%
+  add_fun(alcohol_cut, 1)%>%
+  add_fun(alcohol_cut, 2)%>%
+  add_fun(alcohol_cut, 3)%>%
+  add_fun(alcohol_cut, 4)%>%
+  add_fun(alcohol_cut, 5)%>%
+  layout(title="overall distribution",xaxis=list(type="age",range=c(0,80)),
+                                   yaxis=list(type="alcohol",range=c(0,100)))
+```
+
+This graph demonstrates the relationship between age and alcohol consumption within different educational level. Looking at the blue data which represents overall alcohol consumption distribution, we can conclude that there are certain age groups with particularly higher alcohol consumption compared to other age groups. These include from about age 13 to 21 and age 58 to 60. 
+
+
+## distribution of alcohol across the age based on gender
+```{r,message=FALSE,warning=FALSE}
+p1<-total%>%drop_na(age,alcohol,gender)%>%
+  filter(gender==1)%>%
+  group_by(income_class)%>%
+  summarise(avg_alcohol_age = mean(alcohol))%>%
+  plot_ly(x = ~income_class, y = ~avg_alcohol_age) %>%
+  add_lines(name="average alcohol intake across age for male")%>%
+  slice(c(which.max(avg_alcohol_age), which.min(avg_alcohol_age))) %>%
+  add_annotations(text =c("Min intake"))
+  
+  
+
+p2<-total%>%drop_na(age,alcohol,gender)%>%
+  filter(gender==2)%>%
+  group_by(income_class)%>%
+  summarise(avg_alcohol_age = mean(alcohol))%>%
+  plot_ly(x = ~income_class, y = ~avg_alcohol_age) %>%
+  add_lines(name="average alcohol intake across age for female")%>%
+  slice(c(which.max(avg_alcohol_age), which.min(avg_alcohol_age))) %>%
+  add_annotations(text =c( "Max intake"))
+  
+
+
+subplot(p1,p2)
+```
+This graph demonstrates the relationship between income and alcohol consumption based on different gender(male&female). Overall, two graphs show us a similar trend. We can assume that it is harder for people with low income to afford alcohol and thus the low income population takes the least alcohol. However, as the income level increases, people feel more comfortable about purchasing alcohol, and thus the alcohol intake dramatically increases. Interestingly, when people’s income reaches certain average or above average level, people’s alcohol consumption decreases. This, we believe, reflects the common sense of the world which is that people care much about their health as they become wealthier. 
+
+
+#  Research Question 2: relationship between income and alcohol
+relationship between income and alcohol consumption with factor levels of education
+```{r,message=FALSE,warning=FALSE}
+  total%>%group_by(income_class)%>%
+  summarise(avg_alcohol=mean(alcohol))%>%
+  ggplot(aes(avg_alcohol, fct_relevel(income_class, "average_income", after=2))) +
+  geom_point()+
+  labs(x="Alcohol Intake", y = "income class")
+```
+
+It shows the pattern like the higher income your family has the less alcohol you drink besides the group of low income as they are probably not able to the afford the alcohol.
+
+```{r,message=FALSE,warning=FALSE}
+p1<-ggplot(total, aes(x=fam_income, y=alcohol))+
+  geom_point()+
+  geom_smooth(method="lm", se=F)+
+  scale_y_log10()
+ggplotly(p1)
+```
+
+```{r,message=FALSE,warning=FALSE}
+# as most of the alcohol consumption concerntrate below 100 and the income level is under 25; so we do the filter
+total$educ  <- as.double(total$educ )
+p<-total%>%drop_na(alcohol,fam_income,educational_level )%>%
+  filter(alcohol<=100&fam_income<25&educational_level!="Don't know")%>%
+  ggplot( aes(x=fam_income, y=alcohol))+
+  geom_point(aes(col=factor(educational_level)))+
+  geom_smooth(aes(col=factor(educational_level )), method="lm", se=F)+
+  annotate(geom="text", x=75,y=300, label="y=ax+b")+xlim(0,15)+ylim(0,100)
+
+ggplotly(p)
+
+```
+In this graph, it does not show strong correlation between the family income and alcohol consumption within different education levels. However, we can see that there is a slightly positive correlation between alcohol consumption and family income as the education level increases. However, interestingly, high school graduates population shows a negative correlation between alcohol and family income.  We could make one assumption from such graph. From the previous slide, we saw that as family income increases, people tend to take less alcohol.  Also, we assume that high school graduates are generally financially dependent on their family. Therefore, as the consumption of alcohol in a high income family decreases, the consumption of alcohol by high school graduates naturally decreases because they are financially dependent on their family. 
+
+
+
+
+
+
+# research question 3: Relationship between alcohol and caffeine
+Relationship between alcohol and caffeine consumption based on educational leve
+```{r,message=FALSE,warning=FALSE}
+ggplot(total, aes(caffine, fct_relevel(educational_level, "education", after=2))) +
+  geom_point()+
+  labs(x="Caffeine Intake", y = "eudcational level")
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+total2<- total%>%drop_na(caffine,educational_level,income_class)
+p1<-ggplot(total2,aes(educational_level,caffine))+
+  geom_boxplot(aes(fill=income_class))+ 
+   labs(x="eudcational level", y = "Caffeine Intake", title = "caffine intake by different income class")+
+    scale_y_log10()
+ggplotly(p1)
+```
+
+# Research Question 4: correlation between caffine and alcohol
+## correlation value in each pair of (income_class and education level)
+```{r,message=FALSE,warning=FALSE}
+total%>%drop_na(alcohol,caffine,educational_level,income_class)%>%
+  group_by(income_class,educational_level)%>%summarise(cov_caf_acl = cov(alcohol,caffine))
+```
+```{r,message=FALSE,warning=FALSE}
+ ggplot(total,aes(alcohol,caffine))+
+  geom_point(aes(alpha=I(0.5)))+geom_smooth(method = "lm",se=F)+
+  scale_x_log10()+
+  scale_y_log10()+
+  labs(title="Relationship between caffine and alcohol")
+
+```
+
+The relationship between caffeine and alcohol seems to be positive as shown by this diagram. This suggests that people who consume more alcohol tends to consume more caffeine as well. This may be caused by their age or family income characteristics which are analyzed by previous diagrams. Furthermore, one interesting assumption we made is that people tend to drink more caffeine the day after they drink alcohol to stay sober.
+
+
